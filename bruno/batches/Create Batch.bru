@@ -1,0 +1,31 @@
+meta {
+  name: Create Batch
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/batches
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "courseName": "Introduction to Cybersecurity",
+    "message": "You have been enrolled in Introduction to Cybersecurity. Your course starts on May 1st.",
+    "priority": "high",
+    "recipients": [
+      "alice@example.com",
+      "bob@example.com",
+      "carol@example.com"
+    ]
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.batchId: isString
+  res.body.status: eq queued
+  res.body.totalRecipients: eq 3
+}

@@ -1,0 +1,21 @@
+meta {
+  name: Get Batch Status
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/batches/72c1519e-5dfa-471a-9596-95f2087b2f38
+  body: none
+  auth: none
+}
+
+vars:pre-request {
+  batchId: a3f2c1d4-0000-0000-0000-000000000000
+}
+
+assert {
+  res.status: eq 200
+  res.body.batchId: isString
+  res.body.summary: isDefined
+}

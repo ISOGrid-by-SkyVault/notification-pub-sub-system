@@ -1,0 +1,42 @@
+# Rendered by the nginx image entrypoint: ${API_UPSTREAM} is replaced with the
+# value of the API_UPSTREAM environment variable (default http://api:3000).
+server {
+  listen 8080;
+  server_name _;
+
+  root /usr/share/nginx/html;
+  index index.html;
+
+  # Liveness endpoint for container healthchecks
+  location = /healthz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+
+  # REST API (users, batches)
+  location /api/ {
+    proxy_pass ${API_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+
+  # Server-Sent Events stream. Buffering must be off so each event is flushed
+  # to the browser as soon as the API writes it, and the read timeout is long
+  # because the connection stays open (the API sends a heartbeat every 15s).
+  location ~ ^/users/[^/]+/notifications$ {
+    proxy_pass ${API_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 1h;
+  }
+
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}

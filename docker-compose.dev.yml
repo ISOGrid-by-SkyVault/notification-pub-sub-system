@@ -1,0 +1,117 @@
+# Local development: source is bind-mounted and every Node service restarts on
+# change (nodemon + ts-node). Requires a .env file: cp .env.example .env
+#
+#   docker compose -f docker-compose.dev.yml up --build
+version: "3.8"
+
+services:
+  mongodb:
+    image: mongo:6-jammy
+    container_name: enrollment_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: enrollment_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+  api:
+    build:
+      context: .
+      dockerfile: Infrastructure/api.dev.Dockerfile
+    container_name: enrollment_api
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./src:/app/src
+      - ./client:/app/client
+      - /app/node_modules
+    env_file:
+      - .env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    build:
+      context: .
+      dockerfile: Infrastructure/worker.dev.Dockerfile
+    container_name: enrollment_worker
+    volumes:
+      - ./src:/app/src
+      - /app/node_modules
+    env_file:
+      - .env
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  webhook:
+    build:
+      context: .
+      dockerfile: Infrastructure/webhook.dev.Dockerfile
+    container_name: enrollment_webhook
+    ports:
+      - "3010:3010"
+    volumes:
+      - ./src:/app/src
+      - /app/node_modules
+    env_file:
+      - .env
+    environment:
+      - PORT=3010
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3010/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: enrollment_frontend
+    ports:
+      - "8080:8080"
+    volumes:
+      # Edit the page and refresh the browser, no rebuild needed
+      - ./frontend/public:/usr/share/nginx/html:ro
+    environment:
+      - API_UPSTREAM=http://api:3000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
+  redis_data:

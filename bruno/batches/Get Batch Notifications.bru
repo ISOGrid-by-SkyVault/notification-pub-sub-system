@@ -1,0 +1,20 @@
+meta {
+  name: Get Batch Notifications
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/batches/:batchId/notifications
+  body: none
+  auth: none
+}
+
+vars:pre-request {
+  batchId: a3f2c1d4-0000-0000-0000-000000000000
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}

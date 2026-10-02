@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notifications Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <div class="glow-bg"></div>
+  
+  <header class="app-header">
+    <div class="header-logo">
+      <span class="logo-pulse"></span>
+      <h1>Notifications Hub</h1>
+    </div>
+    <p class="header-subtitle">Real-time asynchronous notification delivery simulation and SSE tracking</p>
+  </header>
+
+  <main class="dashboard-grid">
+    <!-- Sidebar: User Impersonation List -->
+    <aside class="sidebar card">
+      <div class="card-header">
+        <h2>Impersonate User</h2>
+        <p>Select a user to establish a real-time Server-Sent Events (SSE) notification stream.</p>
+      </div>
+      <div id="users-list" class="users-stack">
+        <div class="loading-spinner">Fetching seeded users...</div>
+      </div>
+    </aside>
+
+    <!-- Main Section: Form & Stream -->
+    <section class="main-content">
+      <!-- Top: Form to create batches -->
+      <div class="card form-card">
+        <div class="card-header">
+          <h2>Trigger Enrollment Batch</h2>
+          <p>Create a bulk student enrollment action. Checked users will be enrolled and dispatched.</p>
+        </div>
+        <form id="batch-form" class="batch-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="courseName">Course Name</label>
+              <input type="text" id="courseName" required placeholder="e.g. Introduction to Cybersecurity" value="Introduction to Cybersecurity">
+            </div>
+            <div class="form-group select-group">
+              <label for="priority">Priority</label>
+              <select id="priority">
+                <option value="normal">Normal</option>
+                <option value="high" selected>High</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="message">Notification Template Message</label>
+            <textarea id="message" required placeholder="Message template...">You have been enrolled in Introduction to Cybersecurity. Your course starts on May 1st.</textarea>
+          </div>
+
+          <div class="form-group">
+            <label>Enrolled Recipients</label>
+            <div id="recipients-checkboxes" class="recipients-grid">
+              <!-- Dynamically populated checkboxes -->
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary">
+            <span>Publish Enrollment Batch</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </form>
+      </div>
+
+      <!-- Bottom: Stream for selected user -->
+      <div class="card stream-card">
+        <div class="card-header stream-header-row">
+          <div>
+            <h2>Real-time Notifications Stream</h2>
+            <p id="stream-target-text">Select a user on the sidebar to listen for active dispatches.</p>
+          </div>
+          <div id="stream-status" class="status-badge status-offline">
+            <span class="status-dot"></span>
+            <span class="status-text">Disconnected</span>
+          </div>
+        </div>
+        
+        <div id="notifications-feed" class="notifications-feed">
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="empty-icon"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <p>No active SSE stream. Select an active impersonated user to see incoming dispatches.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Course Enrollment Notification Service &copy; 2026. Powered by Node.js, Express, Redis Pub/Sub, BullMQ, & MongoDB.</p>
+  </footer>
+
+  <script src="index.js"></script>
+</body>
+</html>

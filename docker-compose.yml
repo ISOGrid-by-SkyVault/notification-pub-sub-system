@@ -1,0 +1,143 @@
+# Deployable stack: builds the production images and runs every service.
+#
+#   docker compose up --build
+#
+#   Inbox (receive):    http://localhost:8080
+#   Dashboard (send):   http://localhost:3000
+#
+# Every setting has a default, so no .env file is required. To override one,
+# set it in the environment (or in a .env file next to this file).
+#
+# Credentials are off by default because MongoDB and Redis are only reachable
+# on the internal network. To turn them on, provide these as secrets:
+#   REDIS_PASSWORD                             Redis then requires it
+#   MONGO_ROOT_USERNAME + MONGO_ROOT_PASSWORD  MongoDB then requires them
+#   MONGODB_URI                                must then carry the same credentials:
+#     mongodb://<user>:<password>@mongodb:27017/notification_service?authSource=admin
+# For hot reloading during development, use docker-compose.dev.yml instead.
+version: "3.8"
+
+services:
+  # Stores users, batches and notifications.
+  mongodb:
+    image: mongo:6-jammy
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-}
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+  # BullMQ job queue and the Pub/Sub channels that feed the SSE streams.
+  redis:
+    image: redis:7-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    # Requires the password only when one is set
+    command: ["sh", "-c", "exec redis-server $${REDIS_PASSWORD:+--requirepass \"$$REDIS_PASSWORD\"}"]
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli $${REDIS_PASSWORD:+-a \"$$REDIS_PASSWORD\"} --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+  # REST API, SSE endpoint and the sender dashboard (static files in client/).
+  api:
+    build:
+      context: .
+      dockerfile: Infrastructure/api.prod.Dockerfile
+    image: notification-pub-sub-system-api:latest
+    ports:
+      - "${API_HOST_PORT:-3000}:3000"
+    environment:
+      PORT: "3000"
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/notification_service}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_MAX_RETRIES: ${REDIS_MAX_RETRIES:-10}
+      DISPATCH_FAILURE_RATE: ${DISPATCH_FAILURE_RATE:-0.3}
+      DISPATCH_MAX_RETRIES: ${DISPATCH_MAX_RETRIES:-3}
+      WEBHOOK_URI: ${WEBHOOK_URI:-http://webhook:3010/webhook}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+  # Consumes the queue, simulates the dispatch and publishes the result.
+  worker:
+    build:
+      context: .
+      dockerfile: Infrastructure/worker.prod.Dockerfile
+    image: notification-pub-sub-system-worker:latest
+    environment:
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongodb:27017/notification_service}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_MAX_RETRIES: ${REDIS_MAX_RETRIES:-10}
+      DISPATCH_FAILURE_RATE: ${DISPATCH_FAILURE_RATE:-0.3}
+      DISPATCH_MAX_RETRIES: ${DISPATCH_MAX_RETRIES:-3}
+      WEBHOOK_URI: ${WEBHOOK_URI:-http://webhook:3010/webhook}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Example consumer of the batch-completion webhook. Internal only.
+  webhook:
+    build:
+      context: .
+      dockerfile: Infrastructure/webhook.prod.Dockerfile
+    image: notification-pub-sub-system-webhook:latest
+    expose:
+      - "3010"
+    environment:
+      PORT: "3010"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3010/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+  # Inbox page that receives notifications live. nginx proxies /api and the
+  # SSE stream to the api service.
+  frontend:
+    build:
+      context: ./frontend
+    image: notification-pub-sub-system-frontend:latest
+    ports:
+      - "${FRONTEND_HOST_PORT:-8080}:8080"
+    environment:
+      API_UPSTREAM: ${API_UPSTREAM:-http://api:3000}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mongodb_data:
+  redis_data:

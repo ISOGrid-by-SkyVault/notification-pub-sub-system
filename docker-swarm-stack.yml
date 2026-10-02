@@ -1,0 +1,175 @@
+# Docker Swarm stack: replicated API and workers with rolling updates.
+#
+# A stack cannot build images, so build them first (same names as below):
+#
+#   docker compose build
+#   docker stack deploy -c docker-swarm-stack.yml notifications
+#
+# On a multi-node swarm, push the images to a registry every node can pull
+# from and prefix the image names accordingly.
+#
+# Credentials are Docker secrets, mounted as files under /run/secrets and never
+# stored in this file or in the images. Create them once before deploying:
+#
+#   MONGO_PW=$(openssl rand -hex 24)
+#   printf '%s' "$MONGO_PW" | docker secret create mongo_root_password -
+#   printf 'mongodb://notifications:%s@mongodb:27017/notification_service?authSource=admin' "$MONGO_PW" \
+#     | docker secret create mongodb_uri -
+#   printf '%s' "$(openssl rand -hex 24)" | docker secret create redis_password -
+version: "3.8"
+
+services:
+  mongodb:
+    image: mongo:6-jammy
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=notifications
+      - MONGO_INITDB_ROOT_PASSWORD_FILE=/run/secrets/mongo_root_password
+    secrets:
+      - mongo_root_password
+    volumes:
+      - mongodb_data:/data/db
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1024M
+        reservations:
+          cpus: "0.2"
+          memory: 256M
+
+  redis:
+    image: redis:7-alpine
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$(cat /run/secrets/redis_password)\""]
+    secrets:
+      - redis_password
+    volumes:
+      - redis_data:/data
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+
+  api:
+    image: notification-pub-sub-system-api:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - MONGODB_URI_FILE=/run/secrets/mongodb_uri
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
+      - DISPATCH_FAILURE_RATE=0.3
+      - DISPATCH_MAX_RETRIES=3
+      - WEBHOOK_URI=http://webhook:3010/webhook
+    secrets:
+      - mongodb_uri
+      - redis_password
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+
+  worker:
+    image: notification-pub-sub-system-worker:latest
+    environment:
+      - MONGODB_URI_FILE=/run/secrets/mongodb_uri
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD_FILE=/run/secrets/redis_password
+      - DISPATCH_FAILURE_RATE=0.3
+      - DISPATCH_MAX_RETRIES=3
+      - WEBHOOK_URI=http://webhook:3010/webhook
+    secrets:
+      - mongodb_uri
+      - redis_password
+    deploy:
+      replicas: 3
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+
+  webhook:
+    image: notification-pub-sub-system-webhook:latest
+    environment:
+      - PORT=3010
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+
+  frontend:
+    image: notification-pub-sub-system-frontend:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - API_UPSTREAM=http://api:3000
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 32M
+
+volumes:
+  mongodb_data:
+  redis_data:
+
+secrets:
+  mongo_root_password:
+    external: true
+  mongodb_uri:
+    external: true
+  redis_password:
+    external: true

@@ -1,0 +1,13 @@
+# Keep the build context small and free of local state.
+.git
+.gitignore
+node_modules
+dist
+project
+.env
+*.log
+.DS_Store
+bruno
+k8s
+README.md
+frontend
