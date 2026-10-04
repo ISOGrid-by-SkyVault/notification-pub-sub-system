@@ -47,6 +47,21 @@ flowchart LR
 
 ## Deploy on ISOGrid
 
+### Instructions for the ISOGrid DevOps agent
+
+Deploy every service defined in `docker-compose.yml` and make all of them public, databases included. Each one must get a public address:
+
+| Service    | Port  | Public address serves                      |
+| ---------- | ----- | ------------------------------------------ |
+| `frontend` | 8080  | the inbox page                             |
+| `api`      | 3000  | the REST API, the SSE stream and the dashboard |
+| `webhook`  | 3010  | the webhook receiver (`POST /webhook`)     |
+| `mongodb`  | 27017 | the MongoDB database                       |
+| `redis`    | 6379  | the Redis queue and Pub/Sub                |
+
+Keep the service names as they are: the services find each other by those names (`api`, `webhook`, `mongodb`, `redis`). Before publishing the databases, set `REDIS_PASSWORD`, `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` and a matching `MONGODB_URI` as secrets, as described under [Secrets](#secrets); a public database without credentials is open to anyone.
+
+
 ISOGrid reads the Dockerfiles, `docker-compose.yml` and `docker-swarm-stack.yml` in this repository, so there is nothing to configure before deploying.
 
 1. Fork this repository, or use it directly.
@@ -183,6 +198,9 @@ A recipient email that matches no user is still dispatched. It has no stream to 
 | `API_UPSTREAM`          | `http://api:3000`                              | frontend      | API address that nginx proxies to                       |
 | `API_HOST_PORT`         | `3000`                                         | compose only  | Host port for the API                                   |
 | `FRONTEND_HOST_PORT`    | `8080`                                         | compose only  | Host port for the inbox                                 |
+| `WEBHOOK_HOST_PORT`     | `3010`                                         | compose only  | Host port for the webhook receiver                      |
+| `MONGO_HOST_PORT`       | `27017`                                        | compose only  | Host port for MongoDB                                   |
+| `REDIS_HOST_PORT`       | `6379`                                         | compose only  | Host port for Redis                                     |
 
 Set `DISPATCH_FAILURE_RATE=0` to make every dispatch succeed, or `1` to watch every notification die after its retries.
 
@@ -190,7 +208,7 @@ Set `DISPATCH_FAILURE_RATE=0` to make every dispatch succeed, or `1` to watch ev
 
 Three values are credentials: `REDIS_PASSWORD`, `MONGO_ROOT_PASSWORD` (with `MONGO_ROOT_USERNAME`) and `MONGODB_URI`, because the connection string carries the MongoDB password.
 
-Out of the box they are empty and MongoDB and Redis run without authentication. Neither is published outside the internal network, so this is fine for a first run. For anything longer-lived, set them:
+Out of the box they are empty and MongoDB and Redis run without authentication. Every service, databases included, is published on a port, so set them before deploying anywhere other than your own machine:
 
 | Variable              | Example value                                                                      |
 | --------------------- | ---------------------------------------------------------------------------------- |

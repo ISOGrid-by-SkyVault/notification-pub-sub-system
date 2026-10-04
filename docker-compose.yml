@@ -21,6 +21,8 @@ services:
   # Stores users, batches and notifications.
   mongodb:
     image: mongo:6-jammy
+    ports:
+      - "${MONGO_HOST_PORT:-27017}:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-}
@@ -36,6 +38,8 @@ services:
   # BullMQ job queue and the Pub/Sub channels that feed the SSE streams.
   redis:
     image: redis:7-alpine
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     # Requires the password only when one is set
@@ -101,14 +105,14 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Example consumer of the batch-completion webhook. Internal only.
+  # Example consumer of the batch-completion webhook.
   webhook:
     build:
       context: .
       dockerfile: Infrastructure/webhook.prod.Dockerfile
     image: notification-pub-sub-system-webhook:latest
-    expose:
-      - "3010"
+    ports:
+      - "${WEBHOOK_HOST_PORT:-3010}:3010"
     environment:
       PORT: "3010"
     restart: unless-stopped
